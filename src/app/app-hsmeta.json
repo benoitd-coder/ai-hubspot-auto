@@ -1,0 +1,38 @@
+{
+  "uid": "sales_copilot_app",
+  "type": "app",
+  "config": {
+    "name": "Sales Copilot",
+    "description": "Assistant commercial IA pour l'équipe sales SideCare/LOUNNA. Brief de call, revue de pipe et capture de notes.",
+    "distribution": "private",
+    "auth": {
+      "type": "static",
+      "requiredScopes": [
+        "oauth",
+        "crm.objects.contacts.read",
+        "crm.objects.deals.read",
+        "crm.objects.companies.read",
+        "sales-email-read"
+      ],
+      "optionalScopes": [
+        "crm.objects.contacts.write",
+        "crm.objects.deals.write"
+      ],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": [
+        "https://api.hubapi.com",
+        "https://generativelanguage.googleapis.com"
+      ],
+      "iframe": [],
+      "img": []
+    },
+    "support": {
+      "supportEmail": "benoit@sidecare.com",
+      "documentationUrl": "https://github.com/benoitd-coder/ai-hubspot-auto",
+      "supportUrl": "https://github.com/benoitd-coder/ai-hubspot-auto/issues",
+      "supportPhone": "+33000000000"
+    }
+  }
+}

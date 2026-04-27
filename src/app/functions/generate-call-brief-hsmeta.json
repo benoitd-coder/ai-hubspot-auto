@@ -1,0 +1,8 @@
+{
+  "uid": "generate_call_brief",
+  "type": "app-function",
+  "config": {
+    "entrypoint": "/app/functions/generateCallBrief.js",
+    "secretKeys": ["GEMINI_API_KEY"]
+  }
+}
