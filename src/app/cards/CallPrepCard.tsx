@@ -6,11 +6,10 @@ import {
   Heading,
   Text,
   LoadingSpinner,
-  ErrorState,
+  Alert,
   EmptyState,
   Tile,
-  DescriptionList,
-  DescriptionListItem,
+  List,
 } from '@hubspot/ui-extensions';
 
 type Brief = {
@@ -21,7 +20,7 @@ type Brief = {
   a_eviter: string[];
 };
 
-hubspot.extend<'crm.record.tab'>(({ context, runServerlessFunction }) => (
+hubspot.extend<'crm.record.sidebar'>(({ context, runServerlessFunction }) => (
   <CallPrepCard context={context} runServerless={runServerlessFunction} />
 ));
 
@@ -29,90 +28,133 @@ const CallPrepCard = ({ context, runServerless }: any) => {
   const [brief, setBrief] = useState<Brief | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusText, setStatusText] = useState<string | null>(null);
 
-  const generate = async () => {
+  const objectId = context?.crm?.objectId ?? context?.objectId;
+  const objectTypeId = context?.crm?.objectTypeId ?? context?.objectTypeId;
+  const objectType = context?.crm?.objectType ?? context?.objectType;
+
+  const generate = async (force = false) => {
     setLoading(true);
     setError(null);
+    setStatusText('Lancement de la génération…');
     try {
-      const res = await runServerless({
+      const start = await runServerless({
         name: 'generate_call_brief',
-        parameters: { contactId: context.crm.objectId },
+        parameters: { action: 'start', objectId, objectTypeId, objectType, contactId: objectId, force },
       });
-      if (res.status === 'SUCCESS') {
-        setBrief(res.response.brief);
+
+      const startPayload = start?.response ?? start;
+      if (startPayload?.error) {
+        setError(startPayload.error);
+        return;
+      }
+
+      if (startPayload?.brief) {
+        setBrief(startPayload.brief);
+        setStatusText(startPayload.source === 'cache' ? 'Brief récupéré depuis le cache.' : null);
+        return;
+      }
+
+      const jobId = startPayload?.jobId;
+      if (!jobId) {
+        setError('Réponse inattendue du worker de brief.');
+        return;
+      }
+
+      setStatusText('Brief en cours de génération…');
+      const result = await pollJob(jobId);
+      if (result?.brief) {
+        setBrief(result.brief);
+        setStatusText(null);
       } else {
-        setError(res.message || 'Erreur inconnue');
+        setError(result?.error || 'La génération du brief n’a pas abouti.');
       }
     } catch (e: any) {
-      setError(e.message || String(e));
+      setError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) return <LoadingSpinner label="Génération du brief en cours…" />;
-
-  if (error)
-    return (
-      <ErrorState title="Impossible de générer le brief" layout="vertical">
-        <Text>{error}</Text>
-        <Button onClick={generate}>Réessayer</Button>
-      </ErrorState>
-    );
-
-  if (!brief)
-    return (
-      <EmptyState title="Brief de call" layout="vertical" imageName="resources">
-        <Text>Génère un brief contextualisé pour préparer ton prochain call avec ce contact.</Text>
-        <Button variant="primary" onClick={generate}>
-          Générer le brief
-        </Button>
-      </EmptyState>
-    );
+  const pollJob = async (jobId: string) => {
+    for (let i = 0; i < 45; i += 1) {
+      await wait(2000);
+      const res = await runServerless({
+        name: 'generate_call_brief',
+        parameters: { action: 'status', jobId },
+      });
+      const payload = res?.response ?? res;
+      if (payload?.status === 'done' || payload?.status === 'error') {
+        return payload;
+      }
+      setStatusText(payload?.status === 'running' ? 'Gemini prépare le brief complet…' : 'Brief en file d’attente…');
+    }
+    return { error: 'La génération prend trop de temps. Réessaie dans quelques instants.' };
+  };
 
   return (
     <Flex direction="column" gap="md">
-      <Tile>
-        <Heading>Synthèse</Heading>
-        <Text>{brief.synthese}</Text>
-      </Tile>
-      <Tile>
-        <Heading>Où on en est</Heading>
-        <Text>{brief.etat}</Text>
-      </Tile>
-      <Tile>
-        <Heading>Points ouverts</Heading>
-        <DescriptionList direction="column">
-          {brief.points_ouverts.map((p, i) => (
-            <DescriptionListItem key={i} label={`#${i + 1}`}>
-              {p}
-            </DescriptionListItem>
-          ))}
-        </DescriptionList>
-      </Tile>
-      <Tile>
-        <Heading>Questions à poser</Heading>
-        <DescriptionList direction="column">
-          {brief.questions.map((q, i) => (
-            <DescriptionListItem key={i} label={`Q${i + 1}`}>
-              {q}
-            </DescriptionListItem>
-          ))}
-        </DescriptionList>
-      </Tile>
-      <Tile>
-        <Heading>À éviter</Heading>
-        <DescriptionList direction="column">
-          {brief.a_eviter.map((a, i) => (
-            <DescriptionListItem key={i} label={`!`}>
-              {a}
-            </DescriptionListItem>
-          ))}
-        </DescriptionList>
-      </Tile>
-      <Flex gap="sm">
-        <Button onClick={generate}>Régénérer</Button>
-      </Flex>
+      {loading && <LoadingSpinner label="Génération du brief en cours…" />}
+
+      {statusText && !error && <Text variant="microcopy">{statusText}</Text>}
+
+      {error && (
+        <Alert title="Erreur" variant="error">
+          <Text>{error}</Text>
+        </Alert>
+      )}
+
+      {!loading && !brief && !error && (
+        <EmptyState title="Brief de call" layout="vertical" imageName="resources">
+          <Text>Génère un brief contextualisé à partir des données CRM de cette fiche.</Text>
+        </EmptyState>
+      )}
+
+      {brief && (
+        <>
+          <Tile>
+            <Heading>Synthèse</Heading>
+            <Text>{brief.synthese}</Text>
+          </Tile>
+          <Tile>
+            <Heading>Où on en est</Heading>
+            <Text>{brief.etat}</Text>
+          </Tile>
+          <Tile>
+            <Heading>Points ouverts</Heading>
+            <List variant="unordered-styled">
+              {brief.points_ouverts.map((p, i) => (
+                <Text key={i}>{p}</Text>
+              ))}
+            </List>
+          </Tile>
+          <Tile>
+            <Heading>Questions à poser</Heading>
+            <List variant="ordered-styled">
+              {brief.questions.map((q, i) => (
+                <Text key={i}>{q}</Text>
+              ))}
+            </List>
+          </Tile>
+          <Tile>
+            <Heading>À éviter</Heading>
+            <List variant="unordered-styled">
+              {brief.a_eviter.map((a, i) => (
+                <Text key={i}>{a}</Text>
+              ))}
+            </List>
+          </Tile>
+        </>
+      )}
+
+      <Button variant="primary" onClick={() => generate(Boolean(brief))} disabled={loading}>
+        {brief ? 'Régénérer le brief' : 'Générer le brief'}
+      </Button>
     </Flex>
   );
 };
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -1,27 +1,73 @@
 // Sales Copilot — generate-call-brief
-// Étape 1 (mock) : retourne un brief factice pour valider le wiring HubSpot.
-// Étape 2 : remplacement par un appel Gemini 2.5 Flash + récupération du contexte HubSpot réel.
+// Proxy HubSpot court vers le worker async. La génération IA longue ne tourne pas dans HubSpot.
+
+const BACKEND_TIMEOUT_MS = 8000;
 
 exports.main = async (context = {}) => {
-  const { contactId } = context.parameters || {};
+  const params = context.parameters || {};
+  const action = params.action || 'start';
+  const backendUrl = process.env.BRIEF_WORKER_URL;
+  const apiKey = process.env.BRIEF_WORKER_API_KEY;
 
-  // Mock — sera remplacé par un appel Gemini avec le contexte HubSpot réel.
-  const brief = {
-    synthese: `Brief mock pour le contact ${contactId}. Le wiring fonctionne, prochaine étape : brancher Gemini.`,
-    etat: 'Stage actuel inconnu (mock). Dernier point clé à venir une fois le contexte HubSpot récupéré.',
-    points_ouverts: [
-      'Aucun point ouvert détecté (mock).',
-      'À enrichir avec les notes des 5 dernières interactions.',
-    ],
-    questions: [
-      'Quelle est la priorité actuelle sur la couverture santé ?',
-      'Quel est le calendrier de décision côté direction ?',
-      'Y a-t-il un courtier en place aujourd\'hui ?',
-    ],
-    a_eviter: [
-      'Aucun sujet sensible détecté (mock).',
-    ],
-  };
+  if (!backendUrl || !apiKey) {
+    return {
+      error: 'BRIEF_WORKER_URL ou BRIEF_WORKER_API_KEY non configuré côté HubSpot.',
+    };
+  }
 
-  return { brief };
+  try {
+    const hubspotAccessToken = context.secrets?.PRIVATE_APP_ACCESS_TOKEN || process.env.PRIVATE_APP_ACCESS_TOKEN;
+    if (!hubspotAccessToken) {
+      return { error: 'Token HubSpot privé indisponible dans la fonction.' };
+    }
+
+    if (action === 'status') {
+      if (!params.jobId) return { error: 'jobId manquant.' };
+      return await callBackend(`${backendUrl}/api/brief-jobs/${params.jobId}`, {
+        method: 'GET',
+        apiKey,
+      });
+    }
+
+    return await callBackend(`${backendUrl}/api/brief-jobs`, {
+      method: 'POST',
+      apiKey,
+      body: {
+        objectId: params.objectId || params.contactId,
+        objectType: params.objectType,
+        objectTypeId: params.objectTypeId,
+        force: Boolean(params.force),
+        requestedBy: context.userEmail || context.userId || null,
+        hubspotAccessToken,
+      },
+    });
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
 };
+
+async function callBackend(url, { method, apiKey, body }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+
+    const text = await res.text();
+    const payload = text ? JSON.parse(text) : {};
+    if (!res.ok) {
+      throw new Error(payload.error || `Worker ${res.status}`);
+    }
+    return payload;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

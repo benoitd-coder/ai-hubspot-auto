@@ -14,10 +14,7 @@
         "crm.objects.companies.read",
         "sales-email-read"
       ],
-      "optionalScopes": [
-        "crm.objects.contacts.write",
-        "crm.objects.deals.write"
-      ],
+      "optionalScopes": [],
       "conditionallyRequiredScopes": []
     },
     "permittedUrls": {

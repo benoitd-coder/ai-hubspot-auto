@@ -3,9 +3,9 @@
   "type": "card",
   "config": {
     "name": "Call Prep",
-    "description": "Brief de call généré par IA à partir du contexte du contact et de ses deals.",
+    "description": "Brief de call généré par IA à partir du contexte CRM.",
     "entrypoint": "/app/cards/CallPrepCard.tsx",
-    "location": "crm.record.tab",
-    "objectTypes": ["CONTACT"]
+    "location": "crm.record.sidebar",
+    "objectTypes": ["CONTACT", "COMPANY", "DEAL"]
   }
 }

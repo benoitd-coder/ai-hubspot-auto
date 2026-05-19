@@ -6,3 +6,6 @@ node_modules/
 .hs-cache/
 dist/
 build/
+
+# HubSpot config file
+hubspot.config.yml

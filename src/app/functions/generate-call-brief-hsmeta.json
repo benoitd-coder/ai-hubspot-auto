@@ -3,6 +3,6 @@
   "type": "app-function",
   "config": {
     "entrypoint": "/app/functions/generateCallBrief.js",
-    "secretKeys": ["GEMINI_API_KEY"]
+    "secretKeys": ["BRIEF_WORKER_URL", "BRIEF_WORKER_API_KEY"]
   }
 }
